@@ -173,6 +173,8 @@ This project demonstrates:
 * TensorFlow Training Pipeline
 
 ---
+NOTE: for better output we can increse the values
+more values = better result
 
 ## Author
 

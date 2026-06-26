@@ -1,1 +1,211 @@
+import tensorflow as tf
+from tensorflow.keras import layers
+import numpy as np
+import matplotlib.pyplot as plt
 
+# Load dataset
+(x_train, y_train), _ = tf.keras.datasets.mnist.load_data()
+
+# FAST MODE
+x_train = x_train[:5000]
+y_train = y_train[:5000]
+
+# Normalize
+x_train = x_train / 127.5 - 1
+x_train = x_train.reshape(-1, 28, 28, 1)
+
+BUFFER_SIZE = 5000
+BATCH_SIZE = 64
+
+dataset = (
+    tf.data.Dataset
+    .from_tensor_slices((x_train, y_train))
+    .shuffle(BUFFER_SIZE)
+    .batch(BATCH_SIZE)
+)
+
+# Generator
+generator = tf.keras.Sequential([
+    layers.Input(shape=(100,)),
+
+    layers.Dense(7*7*256),
+    layers.LeakyReLU(),
+
+    layers.Reshape((7,7,256)),
+
+    layers.Conv2DTranspose(
+        128,
+        5,
+        strides=1,
+        padding="same"
+    ),
+
+    layers.LeakyReLU(),
+
+    layers.Conv2DTranspose(
+        64,
+        5,
+        strides=2,
+        padding="same"
+    ),
+
+    layers.LeakyReLU(),
+
+    layers.Conv2DTranspose(
+        1,
+        5,
+        strides=2,
+        padding="same",
+        activation="tanh"
+    )
+])
+
+# Discriminator
+discriminator = tf.keras.Sequential([
+    layers.Input(shape=(28,28,1)),
+
+    layers.Conv2D(
+        64,
+        5,
+        strides=2,
+        padding="same"
+    ),
+
+    layers.LeakyReLU(),
+
+    layers.Flatten(),
+
+    layers.Dense(1)
+])
+
+loss_fn = tf.keras.losses.BinaryCrossentropy(
+    from_logits=True
+)
+
+def generator_loss(fake):
+    return loss_fn(
+        tf.ones_like(fake),
+        fake
+    )
+
+def discriminator_loss(real,fake):
+
+    real_loss = loss_fn(
+        tf.ones_like(real),
+        real
+    )
+
+    fake_loss = loss_fn(
+        tf.zeros_like(fake),
+        fake
+    )
+
+    return real_loss + fake_loss
+
+
+g_optimizer = tf.keras.optimizers.Adam(
+    0.0001
+)
+
+d_optimizer = tf.keras.optimizers.Adam(
+    0.0001
+)
+
+@tf.function
+def train_step(images):
+
+    noise = tf.random.normal(
+        [images.shape[0],100]
+    )
+
+    with tf.GradientTape() as gt,\
+         tf.GradientTape() as dt:
+
+        generated = generator(
+            noise,
+            training=True
+        )
+
+        real = discriminator(
+            images,
+            training=True
+        )
+
+        fake = discriminator(
+            generated,
+            training=True
+        )
+
+        g_loss = generator_loss(fake)
+
+        d_loss = discriminator_loss(
+            real,
+            fake
+        )
+
+    g_grad = gt.gradient(
+        g_loss,
+        generator.trainable_variables
+    )
+
+    d_grad = dt.gradient(
+        d_loss,
+        discriminator.trainable_variables
+    )
+
+    g_optimizer.apply_gradients(
+        zip(
+            g_grad,
+            generator.trainable_variables
+        )
+    )
+
+    d_optimizer.apply_gradients(
+        zip(
+            d_grad,
+            discriminator.trainable_variables
+        )
+    )
+
+
+# FAST TRAINING
+EPOCHS = 2
+
+for epoch in range(EPOCHS):
+
+    print(
+        f"Epoch {epoch+1}"
+    )
+
+    for batch,_ in dataset.take(20):
+
+        train_step(batch)
+
+print(
+    "Training Complete"
+)
+
+# Generate image
+noise = tf.random.normal(
+    [1,100]
+)
+
+img = generator(
+    noise,
+    training=False
+)[0]
+
+plt.figure(figsize=(4,4))
+
+plt.imshow(
+    (img[:,:,0]+1)/2,
+    cmap="gray"
+)
+
+plt.axis("off")
+
+plt.show()
+
+print(
+"Generated Text: AI generated handwritten digit"
+)
